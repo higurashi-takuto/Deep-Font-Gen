@@ -1,4 +1,5 @@
 import glob
+
 import numpy as np
 
 try:
@@ -31,8 +32,11 @@ def make_list():
     image_list = []
     fonts = glob.glob('images/*')
     for fontname in fonts:
-        for input_image in range(0,218):
-            for target_image in range(0,218):
+        for input_image in range(218):
+            for target_image in range(218):
                 if input_image != target_image:
-                    image_list.append(['{0}/{1}.png'.format(fontname, input_image), '{0}/{1}.png'.format(fontname, target_image), target_image])
+                    image_list.append(
+                        ['{}/{}.png'.format(fontname, input_image),
+                         '{}/{}.png'.format(fontname, target_image),
+                         target_image])
     return image_list
