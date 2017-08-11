@@ -2,6 +2,13 @@ import glob
 import os
 
 import numpy as np
+try:
+    import matplotlib
+    import matplotlib.pyplot as plt
+    matplotlib.use('Agg')
+except ImportError:
+    pass
+import chainer
 
 try:
     from PIL import Image
@@ -54,3 +61,45 @@ def set_opt(model, optimizer, *hooks):
     for hook in hooks:
         optimizer.add_hook(hook)
     return optimizer
+
+
+def generate_sample(generator, iterator, device):
+    trigger = (100, 'iteration')
+
+    @chainer.training.make_extension(trigger)
+    def generate(trainer):
+        if trigger[1] == 'epoch':
+            n = trainer.updater.epoch
+        else:
+            n = trainer.updater.iteration
+
+        iterator.reset()
+        converter = chainer.dataset.convert.concat_examples
+        out = os.path.join(trainer.out,
+                           '{}{}'.format(trigger[1], n))
+        try:
+            os.makedirs(out)
+        except OSError:
+            pass
+
+        for i, batch in enumerate(iterator):
+            with chainer.using_config('enable_backprop', False):
+                with chainer.using_config('train', False):
+                    x, x_real, char = converter(batch, device)
+
+                    # generate
+                    x_fake = generator(x, char).data
+
+                    # to cpu
+                    x = chainer.cuda.to_cpu(x).reshape((-1, 64))
+                    x_real = chainer.cuda.to_cpu(x_real).reshape((-1, 64))
+                    x_fake = chainer.cuda.to_cpu(x_fake).reshape((-1, 64))
+
+                    # save spectrogram
+                    result = np.hstack((x, x_real, x_fake))
+                    plt.figure()
+                    plt.imshow(result, cmap='gray', vmin=-1, vmax=1)
+                    plt.savefig(os.path.join(out, '{}.png'.format(i)))
+                    plt.close()
+
+    return generate
