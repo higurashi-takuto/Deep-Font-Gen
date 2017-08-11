@@ -3,6 +3,11 @@ import datetime
 import os
 import shutil
 
+try:
+    import matplotlib
+    matplotlib.use('Agg')
+except ImportError:
+    pass
 import pandas as pd
 import numpy as np
 import chainer
@@ -14,6 +19,7 @@ from updater import DFGUpdater
 from utils import make_list
 from utils import preprocess
 from utils import set_opt
+from utils import generate_sample
 import opt
 
 # use CPU or GPU
@@ -25,27 +31,26 @@ parser.add_argument('--process', '-p', type=int, default=1,
 args = parser.parse_args()
 
 # load data
-train = make_list(opt.root)
-# valid = pd.read_csv()
+data = make_list(opt.root)
 
 # setup dataset iterator
-train_dataset = chainer.datasets.TransformDataset(
-    train, preprocess)
-# valid_dataset = chainer.datasets.TransformDataset(
-#     valid, preprocess)
+dataset = chainer.datasets.TransformDataset(
+    data, preprocess)
+valid_dataset, train_dataset = chainer.datasets.split_dataset_random(
+    dataset, 16)
 
 if args.process > 1:
     train_iter = chainer.iterators.MultiprocessIterator(
         train_dataset, opt.batchsize, n_processes=arg.process)
-    # valid_iter = chainer.iterators.MultiprocessIterator(
-    #     valid_dataset, , opt.batchsize,
-    #     repeat=False, shuffle=False, n_processes=arg.process)
+    valid_iter = chainer.iterators.MultiprocessIterator(
+        valid_dataset, opt.batchsize,
+        repeat=False, shuffle=False, n_processes=arg.process)
 else:
     train_iter = chainer.iterators.SerialIterator(
         train_dataset, opt.batchsize)
-    # valid_iter = chainer.iterators.SerialIterator(
-    #     valid_dataset, , opt.batchsize,
-    #     repeat=False, shuffle=False)
+    valid_iter = chainer.iterators.SerialIterator(
+        valid_dataset, opt.batchsize,
+        repeat=False, shuffle=False)
 
 # make result directory
 result = datetime.datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
@@ -77,10 +82,10 @@ updater = DFGUpdater(opt_g, opt_d, train_iter, args.gpu)
 trainer = chainer.training.Trainer(updater, opt.trigger, out=result)
 
 # setup extensions
-trainer.extend(extensions.LogReport(trigger=(10, 'iteration')))
+trainer.extend(extensions.LogReport(trigger=(100, 'iteration')))
 trainer.extend(extensions.PrintReport(
-    ['iteration', 'loss/recon']),
-    trigger=(10, 'iteration'))
-trainer.extend(extensions.ProgressBar(update_interval=10))
-
+    ['iteration', 'loss/recon', 'loss/h', 'loss/gan/gen', 'loss/gan/dis']),
+    trigger=(100, 'iteration'))
+trainer.extend(extensions.ProgressBar(update_interval=100))
+trainer.extend(generate_sample(generator, valid_iter, args.gpu))
 trainer.run()
